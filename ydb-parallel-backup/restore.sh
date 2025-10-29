@@ -1,0 +1,99 @@
+#!/bin/bash
+
+source utils.sh
+
+echo -e "${green}Start restore: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
+
+# Load config
+echo -e "\nConfiguration:"
+parallel_count=$(config restore_parallelism)
+echo -e "\tParallelism is $parallel_count."
+
+ydb_bin_path=$(config ydb_bin_path)
+echo -e "\tYDB bin path is $ydb_bin_path."
+
+ydb_profile_name=$(config ydb_restore_profile_name)
+echo -e "\tYDB profile is $ydb_profile_name."
+
+echo
+
+# Check ydb and connection
+$ydb_bin_path -p $ydb_profile_name discovery whoami || error_exit "Couldn't connect to YDB."
+
+# Get restore folder
+restore_dir=$1
+
+if [[  -z "$restore_dir" ]]; then
+    error_exit "Please provide directory with backup."
+fi
+
+# Check that tables don't exist
+tables_list_path=$restore_dir/tables.txt
+
+tables_list_to_restore=()
+while IFS= read -r line; do
+    if [[ $line != .sys* ]] && [[ $line != .metadata* ]] && [[ $line != backup* ]] 
+    then
+        tables_list_to_restore+=($line)
+    fi
+done < $tables_list_path
+
+tables_list=$($ydb_bin_path -p $ydb_profile_name scheme ls -R -l --format json | jq -r '.[] | select(.type == "table") | .path')
+
+is_table_exists=false
+for table in ${tables_list[@]}; do
+    if [[ $table != .* ]] && [[ $table != backup* ]]
+    then
+        for table_to_restore in ${tables_list_to_restore[@]}; do
+            if [ $table == $table_to_restore ]
+            then
+                echo "Table \"$table\" is already exists"
+                is_table_exists=true
+            fi
+        done
+    fi
+done
+
+if [ "$is_table_exists" = true ]; then
+    error_exit "Tables are already exists in destination database."
+fi
+
+# Restore tables
+data_dir="$restore_dir/data/tables/*/"
+
+function restore_table {
+    counter=1
+    for table_dir in $data_dir; do
+        if (( $(($counter % $parallel_count )) == $1 )); then
+            path=$(cat "$table_dir/path.txt")
+            echo -e "\tThread $1, counter $counter, restore table $table_dir, path: $path"
+            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input $table_dir || echo -e "\tCouldn't restore for path: $table_dir."
+        fi
+        ((counter++))
+    done
+}
+
+PIDS=()
+for ((i=0; i<$parallel_count; i++)); do
+    restore_table $i &
+    PIDS+=($!)
+done
+
+# Wait for all threads to finish
+for pid in "${PIDS[@]}"; do
+    wait $pid
+done
+
+# Restore views
+view_dir="$restore_dir/data/views/*/"
+
+counter=1
+for view_dir in $view_dir; do
+    path=$(cat "$view_dir/path.txt")
+    echo -e "\tCounter $counter, restore view $view_dir, path: $path"
+    $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input $view_dir || echo -e "\tCouldn't restore for path: $view_dir."
+    ((counter++))
+done
+
+echo
+echo -e "${green}Restore done: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
