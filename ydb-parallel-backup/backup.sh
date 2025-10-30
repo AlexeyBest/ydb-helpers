@@ -1,5 +1,4 @@
 #!/bin/bash
-
 source utils.sh
 
 echo -e "${green}Start backup: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
@@ -26,12 +25,6 @@ backup_dir="$(config backup_directory)/$backup_name"
 echo "Backup directory: $backup_dir"
 mkdir -p $backup_dir
 
-metadata_dir=$backup_dir/metadata
-mkdir -p $metadata_dir
-
-$ydb_bin_path -p $ydb_profile_name tools dump --scheme-only -o $metadata_dir || error_exit "Couldn't backup metadata."
-echo "Metadata backup finished, backup folder: $backup_dir"
-
 # Get full list of databse objects
 database_scheme_path=$backup_dir/database_scheme.json
 $ydb_bin_path -p $ydb_profile_name scheme ls -R -l --format json > $database_scheme_path || error_exit "Couldn't get scheme."
@@ -39,14 +32,8 @@ echo "Database scheme saved here: $database_scheme_path"
 
 # Read list of table, ordered by size
 all_tables=$(cat $database_scheme_path | jq -r 'sort_by(.size) | .[] | select(.type == "table") | .path' || error_exit "Couldn't get tables from database scheme JSON.")
-
-tables_to_backup=()
-for table in ${all_tables[@]}; do
-    if [[ $table != .sys* ]] && [[ $table != .metadata* ]] && [[ $table != backup* ]] 
-    then
-        tables_to_backup+=($table)
-    fi
-done
+# Filter system objects like .sys directories
+tables_to_backup=$(delete_system_objects ${all_tables[@]})
 
 # Create dirs for backup
 all_dirs=$(cat $database_scheme_path | jq -r '.[] | select(.type == "dir") | .path' || error_exit "Couldn't get dirs from database scheme JSON.")
@@ -113,14 +100,8 @@ mkdir -p $view_dir
 views_list_path=$backup_dir/views.txt
 
 all_views=$(cat $database_scheme_path | jq -r '.[] | select(.type == "view") | .path' || error_exit "Couldn't get views from database scheme JSON.")
-
-views_to_backup=()
-for view in ${all_views[@]}; do
-    if [[ $view != .sys* ]] && [[ $view != .metadata* ]] && [[ $view != backup* ]] 
-    then
-        views_to_backup+=($view)
-    fi
-done
+# Filter system objects like .sys directories
+views_to_backup=$(delete_system_objects ${all_views[@]})
 
 counter=1
 for view in ${views_to_backup[@]}; do

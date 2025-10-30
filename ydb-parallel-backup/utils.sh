@@ -45,3 +45,17 @@ get_path() {
 
     echo "${str:0:$last_index}"
 }
+
+delete_system_objects() {
+    arr=("$@")
+    filtered_array=()
+
+    for element in ${arr[@]}; do
+        if [[ $element != .* ]] && [[ $element != backup* ]]
+        then
+            filtered_array+=($element)
+        fi
+    done
+
+    echo ${filtered_array[@]}
+}

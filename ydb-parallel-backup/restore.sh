@@ -38,20 +38,20 @@ while IFS= read -r line; do
     fi
 done < $tables_list_path
 
-tables_list=$($ydb_bin_path -p $ydb_profile_name scheme ls -R -l --format json | jq -r '.[] | select(.type == "table") | .path')
+all_tables=$($ydb_bin_path -p $ydb_profile_name scheme ls -R -l --format json | jq -r '.[] | select(.type == "table") | .path')
+
+# Filter system objects like .sys directories
+tables_list=$(delete_system_objects ${all_tables[@]})
 
 is_table_exists=false
 for table in ${tables_list[@]}; do
-    if [[ $table != .* ]] && [[ $table != backup* ]]
-    then
-        for table_to_restore in ${tables_list_to_restore[@]}; do
-            if [ $table == $table_to_restore ]
-            then
-                echo "Table \"$table\" is already exists"
-                is_table_exists=true
-            fi
-        done
-    fi
+    for table_to_restore in ${tables_list_to_restore[@]}; do
+        if [ $table == $table_to_restore ]
+        then
+            echo "Table \"$table\" is already exists"
+            is_table_exists=true
+        fi
+    done
 done
 
 if [ "$is_table_exists" = true ]; then
@@ -59,15 +59,16 @@ if [ "$is_table_exists" = true ]; then
 fi
 
 # Restore tables
-data_dir="$restore_dir/data/tables/*/"
+path_to_tables="$restore_dir/data/tables/"
+data_dirs=$(ls $path_to_tables)
 
 function restore_table {
     counter=1
-    for table_dir in $data_dir; do
+    for table_dir in ${data_dirs[@]}; do
         if (( $(($counter % $parallel_count )) == $1 )); then
-            path=$(cat "$table_dir/path.txt")
-            echo -e "\tThread $1, counter $counter, restore table $table_dir, path: $path"
-            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input $table_dir || echo -e "\tCouldn't restore for path: $table_dir."
+            path=$(cat "$path_to_tables/$table_dir/path.txt")
+            echo -e "\tThread $1, counter $counter, restore table $path_to_tables/$table_dir, path: $path"
+            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir" || echo -e "\tCouldn't restore for path: $path_to_tables/$table_dir."
         fi
         ((counter++))
     done
@@ -85,13 +86,14 @@ for pid in "${PIDS[@]}"; do
 done
 
 # Restore views
-view_dir="$restore_dir/data/views/*/"
+path_to_views="$restore_dir/data/views/"
+view_dirs=$(ls $path_to_views)
 
 counter=1
-for view_dir in $view_dir; do
-    path=$(cat "$view_dir/path.txt")
-    echo -e "\tCounter $counter, restore view $view_dir, path: $path"
-    $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input $view_dir || echo -e "\tCouldn't restore for path: $view_dir."
+for view_dir in ${views_dirs[@]}; do
+    path=$(cat "$path_to_views/$view_dir/path.txt")
+    echo -e "\tCounter $counter, restore view $path_to_views/$view_dir, path: $path"
+    $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_views/$view_dir" || echo -e "\tCouldn't restore for path: $path_to_views/$view_dir."
     ((counter++))
 done
 
