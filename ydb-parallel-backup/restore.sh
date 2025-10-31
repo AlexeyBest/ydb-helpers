@@ -1,8 +1,8 @@
 #!/bin/bash
-
 source utils.sh
 
-echo -e "${green}Start restore: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
+start_datetime=$(date +'%Y-%m-%d %H:%M:%S')
+echo -e "${green}Start restore: ${start_datetime}${no_color}"
 
 # Load config
 echo -e "\nConfiguration:"
@@ -98,4 +98,4 @@ for view_dir in ${views_dirs[@]}; do
 done
 
 echo
-echo -e "${green}Restore done: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
+echo -e "${green}Restore done: $(date +'%Y-%m-%d %H:%M:%S') (started at ${start_datetime})${no_color}"

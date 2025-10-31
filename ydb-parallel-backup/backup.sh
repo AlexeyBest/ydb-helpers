@@ -1,7 +1,8 @@
 #!/bin/bash
 source utils.sh
 
-echo -e "${green}Start backup: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
+start_datetime=$(date +'%Y-%m-%d %H:%M:%S')
+echo -e "${green}Start backup: ${start_datetime}${no_color}"
 
 # Load config
 echo -e "\nConfiguration:"
@@ -13,6 +14,9 @@ echo -e "\tYDB bin path is $ydb_bin_path."
 
 ydb_profile_name=$(config ydb_backup_profile_name)
 echo -e "\tYDB profile is $ydb_profile_name."
+
+backup_view=$(config backup_view)
+echo -e "\tBackup view: $backup_view."
 
 echo
 
@@ -30,8 +34,8 @@ database_scheme_path=$backup_dir/database_scheme.json
 $ydb_bin_path -p $ydb_profile_name scheme ls -R -l --format json > $database_scheme_path || error_exit "Couldn't get scheme."
 echo "Database scheme saved here: $database_scheme_path"
 
-# Read list of table, ordered by size
-all_tables=$(cat $database_scheme_path | jq -r 'sort_by(.size) | .[] | select(.type == "table") | .path' || error_exit "Couldn't get tables from database scheme JSON.")
+# Read list of table, ordered by size (desc)
+all_tables=$(cat $database_scheme_path | jq -r 'sort_by(.size) | reverse | .[] | select(.type == "table") | .path' || error_exit "Couldn't get tables from database scheme JSON.")
 # Filter system objects like .sys directories
 tables_to_backup=$(delete_system_objects ${all_tables[@]})
 
@@ -93,37 +97,43 @@ for pid in "${PIDS[@]}"; do
     wait $pid
 done
 
-# Dump view
 view_dir=$backup_dir/data/views
 mkdir -p $view_dir
 
-views_list_path=$backup_dir/views.txt
+# Dump view
+if [ $backup_view = true ]
+then
+    views_list_path=$backup_dir/views.txt
 
-all_views=$(cat $database_scheme_path | jq -r '.[] | select(.type == "view") | .path' || error_exit "Couldn't get views from database scheme JSON.")
-# Filter system objects like .sys directories
-views_to_backup=$(delete_system_objects ${all_views[@]})
+    all_views=$(cat $database_scheme_path | jq -r '.[] | select(.type == "view") | .path' || error_exit "Couldn't get views from database scheme JSON.")
+    # Filter system objects like .sys directories
+    views_to_backup=$(delete_system_objects ${all_views[@]})
 
-counter=1
-for view in ${views_to_backup[@]}; do
-    dump_dir=$view_dir/"$(printf "%04d\n" $counter)"
-    mkdir -p $dump_dir
-    echo -e "\tCounter $counter, dump view $view to $dump_dir"
-    $ydb_bin_path -p $ydb_profile_name tools dump -p $view -o $dump_dir --avoid-copy || error_exit "Couldn't backup view $view."
-    echo $view >> $views_list_path
-    if [[ $view == *"/"* ]]; then
-        get_path $view >> "$dump_dir/path.txt"
-    else
-        echo "." > "$dump_dir/path.txt"
-    fi
-    ((counter++))
-done
+    counter=1
+    for view in ${views_to_backup[@]}; do
+        dump_dir=$view_dir/"$(printf "%04d\n" $counter)"
+        mkdir -p $dump_dir
+        echo -e "\tCounter $counter, dump view $view to $dump_dir"
+        $ydb_bin_path -p $ydb_profile_name tools dump -p $view -o $dump_dir --avoid-copy || error_exit "Couldn't backup view $view."
+        echo $view >> $views_list_path
+        if [[ $view == *"/"* ]]; then
+            get_path $view >> "$dump_dir/path.txt"
+        else
+            echo "." > "$dump_dir/path.txt"
+        fi
+        ((counter++))
+    done
+else
+    echo -e "\nBackup for view is disabled by configuration.conf"
+fi
 
 # Clean up
 echo
-$ydb_bin_path -p $ydb_profile_name scheme rmdir -r $backup_name
+$ydb_bin_path -p $ydb_profile_name scheme rmdir -r -f $backup_name
 
 echo
-echo -e "${green}Done: $(date +'%Y-%m-%d %H:%M:%S')${no_color}"
+echo -e "${green}Done: $(date +'%Y-%m-%d %H:%M:%S') (started at ${start_datetime})${no_color}"
 echo "Backup directory: $backup_dir"
+echo -e "Backup size: $(du -hs ${backup_dir})"
 echo "Metadata: $metadata_dir"
 echo "Data: $data_dir"

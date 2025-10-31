@@ -28,6 +28,9 @@ config() {
             ydb_bin_path)
                 echo -n "ydb"
                 ;;
+            backup_view)
+                echo -n "true"
+                ;;
         esac
     else
         echo -n $val
