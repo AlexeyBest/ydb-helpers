@@ -28,6 +28,13 @@ for host in ${hosts[@]}; do
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "free -mh" > $output_dir/host_${host}_memory.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo ps -aux | grep ydbd" > $output_dir/host_${host}_processes.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo uname -a" > $output_dir/host_${host}_uname.out
+
+    # YDB services settings
+    services=$(ssh -o StrictHostKeyChecking=no $ssh_user@$host "systemctl list-units --type=service --no-pager --all | grep ydbd" | awk '{print $1}')
+    for service in ${services[@]}; do
+        mkdir -p $output_dir/host_${host}
+        ssh -o StrictHostKeyChecking=no $ssh_user@$host "systemctl show $ydbd" > $output_dir/host_${host}/service_$service.out
+    done
 done
 
 echo -e "\nCollect info from YDB"
