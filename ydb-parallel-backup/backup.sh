@@ -1,22 +1,25 @@
 #!/bin/bash
 source utils.sh
 
+# Logging
+init_logging "backup"
+
 start_datetime=$(date +'%Y-%m-%d %H:%M:%S')
-echo -e "${green}Start backup: ${start_datetime}${no_color}"
+echo -e "${green}Start backup: ${start_datetime}${no_color}\n"
 
 # Load config
-echo -e "\nConfiguration:"
+log_message "Configuration:"
 parallel_count=$(config backup_parallelism)
-echo -e "\tParallelism is $parallel_count."
+log_message "\tParallelism is $parallel_count."
 
 ydb_bin_path=$(config ydb_bin_path)
-echo -e "\tYDB bin path is $ydb_bin_path."
+log_message "\tYDB bin path is $ydb_bin_path."
 
 ydb_profile_name=$(config ydb_backup_profile_name)
-echo -e "\tYDB profile is $ydb_profile_name."
+log_message "\tYDB profile is $ydb_profile_name."
 
 backup_view=$(config backup_view)
-echo -e "\tBackup view: $backup_view."
+log_message "\tBackup view: $backup_view."
 
 echo
 
@@ -26,13 +29,17 @@ $ydb_bin_path -p $ydb_profile_name discovery whoami || error_exit "Couldn't conn
 # Backup all metadata
 backup_name="backup_$(date +'%Y%m%d_%H%M%S')"
 backup_dir="$(config backup_directory)/$backup_name"
-echo "Backup directory: $backup_dir"
+log_message "Backup directory: $backup_dir"
 mkdir -p $backup_dir
+
+remove_snapshot() {
+    $ydb_bin_path -p $ydb_profile_name scheme rmdir -r -f $backup_name
+}
 
 # Get full list of databse objects
 database_scheme_path=$backup_dir/database_scheme.json
 $ydb_bin_path -p $ydb_profile_name scheme ls -R -l --format json > $database_scheme_path || error_exit "Couldn't get scheme."
-echo "Database scheme saved here: $database_scheme_path"
+log_message "Database scheme saved here: $database_scheme_path"
 
 # Read list of table, ordered by size (desc)
 all_tables=$(cat $database_scheme_path | jq -r 'sort_by(.size) | reverse | .[] | select(.type == "table") | .path' || error_exit "Couldn't get tables from database scheme JSON.")
@@ -73,7 +80,7 @@ function dump_table {
         if (( $(($counter % $parallel_count )) == $1 )); then
             dump_dir=$data_dir/"$(printf "%04d\n" $1)_$(printf "%04d\n" $counter)"
             mkdir -p $dump_dir
-            echo -e "\tThread $1, counter $counter, dump table $backup_name/$table to $dump_dir"
+            log_message "\tTable: $table (thread $1, counter $counter, dump table $backup_name/$table to $dump_dir)"
             $ydb_bin_path -p $ydb_profile_name tools dump -p $backup_name/$table -o $dump_dir --avoid-copy || error_exit "Couldn't backup table $backup_name/$table."
             echo $table >> $tables_list_path
             if [[ $table == *"/"* ]]; then
@@ -113,7 +120,7 @@ then
     for view in ${views_to_backup[@]}; do
         dump_dir=$view_dir/"$(printf "%04d\n" $counter)"
         mkdir -p $dump_dir
-        echo -e "\tCounter $counter, dump view $view to $dump_dir"
+        log_message "\tView $view (counter $counter, dump view $view to $dump_dir)"
         $ydb_bin_path -p $ydb_profile_name tools dump -p $view -o $dump_dir --avoid-copy || error_exit "Couldn't backup view $view."
         echo $view >> $views_list_path
         if [[ $view == *"/"* ]]; then
@@ -124,16 +131,16 @@ then
         ((counter++))
     done
 else
-    echo -e "\nBackup for view is disabled by configuration.conf"
+    log_message "\nBackup for view is disabled by configuration.conf"
 fi
 
 # Clean up
-echo
-$ydb_bin_path -p $ydb_profile_name scheme rmdir -r -f $backup_name
+log_message "\nDelete snapshot"
+remove_snapshot
 
-echo
-echo -e "${green}Done: $(date +'%Y-%m-%d %H:%M:%S') (started at ${start_datetime})${no_color}"
-echo "Backup directory: $backup_dir"
-echo -e "Backup size: $(du -hs ${backup_dir})"
-echo "Metadata: $metadata_dir"
-echo "Data: $data_dir"
+log_message "\n${green}Done: $(date +'%Y-%m-%d %H:%M:%S') (started at ${start_datetime})${no_color}"
+log_message "\tBackup directory: $backup_dir"
+log_message "\tBackup size: $(du -hs ${backup_dir})"
+# log_message "\tMetadata: $metadata_dir"
+log_message "\tData: $data_dir"
+log_message "\tLog file: $log_file"

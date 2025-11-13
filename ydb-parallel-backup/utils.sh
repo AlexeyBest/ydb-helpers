@@ -4,8 +4,41 @@ red="\033[0;31m"
 green="\033[0;32m"
 no_color='\033[0m'
 
+# Logging
+log_dir="logs"
+mkdir -p $log_dir
+log_file="$log_dir/log_$(date +'%Y%m%d_%H%M%S').log"
+is_backup=true
+init_logging() {
+    
+    # Create path
+    # log_files="$(ls $log_dir/log_* | sort -r)"
+    if [ $1 = "backup" ]; then
+        log_file="$log_dir/backup_$(date +'%Y%m%d_%H%M%S').log"
+        log_files="$(ls $log_dir/backup_* | sort -r)"
+    else
+        log_file="$log_dir/restore_$(date +'%Y%m%d_%H%M%S').log"
+        log_files="$(ls $log_dir/restore_* | sort -r)"
+    fi
+    
+    # Delete an old log files
+    max_log_files_count=3
+    counter=1
+    for old_log_file in ${log_files[@]}; do
+        if (( $counter > $max_log_files_count )); then
+            rm $old_log_file
+        fi
+        ((counter++))
+    done;
+}
+
+log_message() {
+    echo -e $1
+    echo -e "$(date +'%Y-%m%-d %H:%M:%S')\t$1" >> $log_file
+}
+
 error_exit() {
-    echo -e "${red}Error: $1 ${no_color}"
+    log_message "${red}ERROR: $1 ${no_color}"
     exit 1
 }
 

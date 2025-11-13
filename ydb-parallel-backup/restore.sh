@@ -1,19 +1,22 @@
 #!/bin/bash
 source utils.sh
 
+# Logging
+init_logging "restore"
+
 start_datetime=$(date +'%Y-%m-%d %H:%M:%S')
-echo -e "${green}Start restore: ${start_datetime}${no_color}"
+log_message "${green}Start restore: ${start_datetime}${no_color}\n"
 
 # Load config
-echo -e "\nConfiguration:"
+log_message "Configuration:"
 parallel_count=$(config restore_parallelism)
-echo -e "\tParallelism is $parallel_count."
+log_message "\tParallelism is $parallel_count."
 
 ydb_bin_path=$(config ydb_bin_path)
-echo -e "\tYDB bin path is $ydb_bin_path."
+log_message "\tYDB bin path is $ydb_bin_path."
 
 ydb_profile_name=$(config ydb_restore_profile_name)
-echo -e "\tYDB profile is $ydb_profile_name."
+log_message "\tYDB profile is $ydb_profile_name."
 
 echo
 
@@ -48,7 +51,7 @@ for table in ${tables_list[@]}; do
     for table_to_restore in ${tables_list_to_restore[@]}; do
         if [ $table == $table_to_restore ]
         then
-            echo "Table \"$table\" is already exists"
+            log_message "Table \"$table\" is already exists"
             is_table_exists=true
         fi
     done
@@ -67,7 +70,7 @@ function restore_table {
     for table_dir in ${data_dirs[@]}; do
         if (( $(($counter % $parallel_count )) == $1 )); then
             path=$(cat "$path_to_tables/$table_dir/path.txt")
-            echo -e "\tThread $1, counter $counter, restore table $path_to_tables/$table_dir, path: $path"
+            log_message "\tThread $1, counter $counter, restore table $path_to_tables/$table_dir, path: $path"
             $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir" || echo -e "\tCouldn't restore for path: $path_to_tables/$table_dir."
         fi
         ((counter++))
@@ -92,10 +95,10 @@ view_dirs=$(ls $path_to_views)
 counter=1
 for view_dir in ${views_dirs[@]}; do
     path=$(cat "$path_to_views/$view_dir/path.txt")
-    echo -e "\tCounter $counter, restore view $path_to_views/$view_dir, path: $path"
+    log_message "\tCounter $counter, restore view $path_to_views/$view_dir, path: $path"
     $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_views/$view_dir" || echo -e "\tCouldn't restore for path: $path_to_views/$view_dir."
     ((counter++))
 done
 
 echo
-echo -e "${green}Restore done: $(date +'%Y-%m-%d %H:%M:%S') (started at ${start_datetime})${no_color}"
+log_message "${green}Restore done: $(date +'%Y-%m-%d %H:%M:%S') (started at ${start_datetime})${no_color}"
