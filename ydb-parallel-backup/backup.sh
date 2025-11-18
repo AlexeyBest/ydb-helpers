@@ -80,6 +80,7 @@ function dump_table {
         if (( $(($counter % $parallel_count )) == $1 )); then
             dump_dir=$data_dir/"$(printf "%04d\n" $1)_$(printf "%04d\n" $counter)"
             mkdir -p $dump_dir
+            mkdir -p "$log_dir/dumps"
             log_message "\tTable: $table (thread $1, counter $counter, dump table $backup_name/$table to $dump_dir)"
             $ydb_bin_path -p $ydb_profile_name tools dump -p $backup_name/$table -o $dump_dir --avoid-copy > "$log_dir/dumps/$(printf "%04d\n" $1)_$(printf "%04d\n" $counter).log" || error_exit "Couldn't backup table $backup_name/$table."
             echo $table >> $tables_list_path
