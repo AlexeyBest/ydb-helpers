@@ -81,7 +81,7 @@ function dump_table {
             dump_dir=$data_dir/"$(printf "%04d\n" $1)_$(printf "%04d\n" $counter)"
             mkdir -p $dump_dir
             log_message "\tTable: $table (thread $1, counter $counter, dump table $backup_name/$table to $dump_dir)"
-            $ydb_bin_path -p $ydb_profile_name tools dump -p $backup_name/$table -o $dump_dir --avoid-copy || error_exit "Couldn't backup table $backup_name/$table."
+            $ydb_bin_path -p $ydb_profile_name tools dump -p $backup_name/$table -o $dump_dir --avoid-copy > "$log_dir/dumps/$(printf "%04d\n" $1)_$(printf "%04d\n" $counter).log" || error_exit "Couldn't backup table $backup_name/$table."
             echo $table >> $tables_list_path
             if [[ $table == *"/"* ]]; then
                 get_path $table >> "$dump_dir/path.txt"
@@ -102,6 +102,12 @@ done
 # Wait for all threads to finish
 for pid in "${PIDS[@]}"; do
     wait $pid
+    exit_status=$?
+    if (( $exit_status > 0 )); then
+        error_exit "Expected exit status 0, but it's $exit_status for 'ydb tools dump'"
+    else 
+        log_message "Pid $pid, exit status is $exit_status"
+    fi
 done
 
 view_dir=$backup_dir/data/views
