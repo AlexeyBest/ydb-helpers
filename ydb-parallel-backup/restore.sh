@@ -71,7 +71,8 @@ function restore_table {
         if (( $(($counter % $parallel_count )) == $1 )); then
             path=$(cat "$path_to_tables/$table_dir/path.txt")
             log_message "\tThread $1, counter $counter, restore table $path_to_tables/$table_dir, path: $path"
-            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir" || error_exit "\tCouldn't restore for path: $path_to_tables/$table_dir."
+            mkdir -p "$log_dir/dumps"
+            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir"  > "$log_dir/dumps/$(printf "%04d\n" $1)_$(printf "%04d\n" $counter).log" || error_exit "\tCouldn't restore for path: $path_to_tables/$table_dir."
         fi
         ((counter++))
     done
