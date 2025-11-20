@@ -10,13 +10,16 @@ log_message "${green}Start restore: ${start_datetime}${no_color}\n"
 # Load config
 log_message "Configuration:"
 parallel_count=$(config restore_parallelism)
-log_message "\tParallelism is $parallel_count."
+log_message "\tParallelism: $parallel_count."
 
 ydb_bin_path=$(config ydb_bin_path)
-log_message "\tYDB bin path is $ydb_bin_path."
+log_message "\tYDB bin path: $ydb_bin_path."
 
 ydb_profile_name=$(config ydb_restore_profile_name)
-log_message "\tYDB profile is $ydb_profile_name."
+log_message "\tYDB profile: $ydb_profile_name."
+
+use_import_data=$(config use_import_data)
+log_message "\tUse '--import-data' option during restore: $use_import_data."
 
 echo
 
@@ -70,9 +73,14 @@ function restore_table {
     for table_dir in ${data_dirs[@]}; do
         if (( $(($counter % $parallel_count )) == $1 )); then
             path=$(cat "$path_to_tables/$table_dir/path.txt")
-            log_message "\tThread $1, counter $counter, restore table $path_to_tables/$table_dir, path: $path"
-            mkdir -p "$log_dir/dumps"
-            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir"  > "$log_dir/dumps/$(printf "%04d\n" $1)_$(printf "%04d\n" $counter).log" || error_exit "\tCouldn't restore for path: $path_to_tables/$table_dir."
+            log_message "\tRestore table $path_to_tables/$table_dir, path: $path (thread $1, counter $counter)"
+            mkdir -p "$log_dir/restore_logs"
+            if [ $use_import_data = true ]
+            then
+                $ydb_bin_path -p $ydb_profile_name tools restore --import-data --retries 50 --path $path --input "$path_to_tables/$table_dir"  > "$log_dir/restore_logs/$(printf "%04d\n" $1)_$(printf "%04d\n" $counter).log" || error_exit "\tCouldn't restore for path: $path_to_tables/$table_dir. (thread $1, counter $counter)"
+            else
+                $ydb_bin_path -p $ydb_profile_name tools restore --retries 50 --path $path --input "$path_to_tables/$table_dir"  > "$log_dir/restore_logs/$(printf "%04d\n" $1)_$(printf "%04d\n" $counter).log" || error_exit "\tCouldn't restore for path: $path_to_tables/$table_dir. (thread $1, counter $counter)"
+            fi    
         fi
         ((counter++))
     done

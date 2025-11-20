@@ -64,6 +64,9 @@ config() {
             backup_view)
                 echo -n "true"
                 ;;
+            use_import_data)
+                echo -n "true"
+                ;;
         esac
     else
         echo -n $val
