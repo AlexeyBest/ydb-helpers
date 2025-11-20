@@ -62,7 +62,7 @@ if [ "$is_table_exists" = true ]; then
 fi
 
 # Restore tables
-path_to_tables="$restore_dir/data/tables/"
+path_to_tables="$restore_dir/data/tables"
 data_dirs=$(ls $path_to_tables)
 
 function restore_table {
@@ -71,7 +71,7 @@ function restore_table {
         if (( $(($counter % $parallel_count )) == $1 )); then
             path=$(cat "$path_to_tables/$table_dir/path.txt")
             log_message "\tThread $1, counter $counter, restore table $path_to_tables/$table_dir, path: $path"
-            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir" || echo -e "\tCouldn't restore for path: $path_to_tables/$table_dir."
+            $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_tables/$table_dir" || error_exit "\tCouldn't restore for path: $path_to_tables/$table_dir."
         fi
         ((counter++))
     done
@@ -86,17 +86,23 @@ done
 # Wait for all threads to finish
 for pid in "${PIDS[@]}"; do
     wait $pid
+    exit_status=$?
+    if (( $exit_status > 0 )); then
+        error_exit "Expected exit status 0, but it's $exit_status for 'ydb tools restore'"
+    else 
+        log_message "Pid $pid, exit status is $exit_status"
+    fi
 done
 
 # Restore views
-path_to_views="$restore_dir/data/views/"
+path_to_views="$restore_dir/data/views"
 view_dirs=$(ls $path_to_views)
 
 counter=1
 for view_dir in ${views_dirs[@]}; do
     path=$(cat "$path_to_views/$view_dir/path.txt")
     log_message "\tCounter $counter, restore view $path_to_views/$view_dir, path: $path"
-    $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_views/$view_dir" || echo -e "\tCouldn't restore for path: $path_to_views/$view_dir."
+    $ydb_bin_path -p $ydb_profile_name tools restore --path $path --input "$path_to_views/$view_dir" || error_exit "\tCouldn't restore for path: $path_to_views/$view_dir."
     ((counter++))
 done
 
