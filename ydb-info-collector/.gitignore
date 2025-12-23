@@ -1,1 +1,4 @@
 output/
+logs/
+backups/
+.DS_Store

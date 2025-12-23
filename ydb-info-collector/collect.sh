@@ -25,14 +25,29 @@ for host in ${hosts[@]}; do
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo sysctl -a" > $output_dir/host_${host}_sysctl.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo systemctl status 'ydbd*'" > $output_dir/host_${host}_systemctl.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo cat /proc/cpuinfo" > $output_dir/host_${host}_cpuinfo.out
+    # It's applicable only for phisycal hardware. 
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor" > $output_dir/host_${host}_cpugovernor.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "free -mh" > $output_dir/host_${host}_memory.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo ps -aux | grep ydbd" > $output_dir/host_${host}_processes.out
     ssh -o StrictHostKeyChecking=no $ssh_user@$host "sudo uname -a" > $output_dir/host_${host}_uname.out
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "ldd --version" > $output_dir/host_${host}_libc_version.out
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "lsblk" > $output_dir/host_${host}_lsblk.out
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "ls -la /dev/disk/by-partlabel/" > $output_dir/host_${host}_partitions.out
+
+    # Expected: [always] madvise never
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "cat /sys/kernel/mm/transparent_hugepage/enabled" > $output_dir/host_${host}_thp.out
+    # Expected: always defer [defer+madvise] madvise never
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "cat /sys/kernel/mm/transparent_hugepage/defrag" >> $output_dir/host_${host}_thp.out
+    # Expected: 0
+    ssh -o StrictHostKeyChecking=no $ssh_user@$host "cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none" >> $output_dir/host_${host}_thp.out
 
     # YDB services settings
     services=$(ssh -o StrictHostKeyChecking=no $ssh_user@$host "systemctl list-units --type=service --no-pager --all | grep ydbd" | awk '{print $1}')
     for service in ${services[@]}; do
         mkdir -p $output_dir/host_${host}
+        # Expected: LimitNOFIle = 65536 (ulimit -n) / Максимальное число открытых файлов
+        # Expected: LimitCORE = 0 (ulimit -c) / Максимальный размер файла дампа в байтах, который процесс может сохранить. При значении 0 файлы дампа не создаются. Когда он не равен нулю, большие дампы усекаются до указанного размера
+        # Expected: LimitMEMLOCK = 3221225472 (ulimit -l)
         ssh -o StrictHostKeyChecking=no $ssh_user@$host "systemctl show $ydbd" > $output_dir/host_${host}/service_$service.out
     done
 done
@@ -48,8 +63,8 @@ echo -e "\tConfiguration"
 $ydb_bin_path -p $ydb_profile_name admin cluster config fetch > $output_dir/ydb_config.yaml
 
 # YDB latency check
-echo -e "\tLatency check (long operation)"
-$ydb_bin_path -p $ydb_profile_name debug latency > $output_dir/ydb_latency.out
+# echo -e "\tLatency check (long operation)"
+# $ydb_bin_path -p $ydb_profile_name debug latency > $output_dir/ydb_latency.out
 
 # YDB ping check
 echo -e "\tPing check"
